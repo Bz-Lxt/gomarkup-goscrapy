@@ -116,7 +116,7 @@ func (in RuleInput) Apply(dst *Rule) {
 		dst.LinkSelector = strings.TrimSpace(in.LinkSelector)
 	}
 	if in.Fields != nil {
-		norm := in.Fields[:0]
+		norm := make(FieldList, 0, len(in.Fields))
 		for _, f := range in.Fields {
 			norm = append(norm, f.Normalize())
 		}
