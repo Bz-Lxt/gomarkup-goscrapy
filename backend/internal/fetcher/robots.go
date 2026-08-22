@@ -59,11 +59,10 @@ func (c *RobotsCache) Allowed(ctx context.Context, rawURL string) (bool, time.Du
 		return true, 0, nil
 	}
 	req.Header.Set("User-Agent", c.ua)
-	status, body, err := c.openRobots(req)
+	status, raw, err := c.openRobots(req)
 	rule := &robotsRule{fetched: time.Now(), ok: true, allow: []string{"/"}}
-	if err == nil && body != nil {
+	if err == nil && raw != nil {
 		if status >= 200 && status < 300 {
-			raw, _ := io.ReadAll(body)
 			rule = parseRobots(string(raw))
 			rule.fetched = time.Now()
 			rule.ok = true
@@ -75,7 +74,7 @@ func (c *RobotsCache) Allowed(ctx context.Context, rawURL string) (bool, time.Du
 	return rule.allows(u.Path), rule.delay, nil
 }
 
-func (c *RobotsCache) openRobots(req *http.Request) (int, io.Reader, error) {
+func (c *RobotsCache) openRobots(req *http.Request) (int, []byte, error) {
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return 0, nil, err
@@ -84,7 +83,11 @@ func (c *RobotsCache) openRobots(req *http.Request) (int, io.Reader, error) {
 		return 0, nil, nil
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode, io.LimitReader(resp.Body, 1<<20), nil
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return resp.StatusCode, nil, err
+	}
+	return resp.StatusCode, raw, nil
 }
 
 func (r *robotsRule) allows(path string) bool {
