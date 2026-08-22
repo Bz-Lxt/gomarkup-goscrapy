@@ -102,7 +102,7 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, respectRobots bool) (
 		if c.pool != nil && px != "" {
 			c.pool.Report(px, false, err.Error())
 		}
-		return nil, fmt.Errorf("fetch %s: %v", rawURL, err)
+		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
