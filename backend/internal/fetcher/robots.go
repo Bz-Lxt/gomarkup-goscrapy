@@ -148,7 +148,12 @@ func parseRobots(body string) *robotsRule {
 		}
 	}
 	if !matched {
-		return nil
+		// No User-agent group targets GoScrapy or "*". Per the
+		// robots.txt spec (RFC 9309 §2.2.1), crawlers for which no
+		// matching group exists are allowed to access all paths.
+		// Return a permissive rule instead of nil so callers never
+		// dereference a nil pointer.
+		return &robotsRule{allow: []string{"/"}}
 	}
 	return r
 }
