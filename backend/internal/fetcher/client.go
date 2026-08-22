@@ -104,7 +104,11 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, respectRobots bool) (
 		}
 		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
-	defer func() { err = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close body: %w", cerr)
+		}
+	}()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
