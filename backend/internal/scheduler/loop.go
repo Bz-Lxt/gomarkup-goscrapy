@@ -41,10 +41,13 @@ func (l *Loop) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			leader := l.elector.Tick(ctx)
-			if !leader {
+			if !l.elector.Tick(ctx) {
 				continue
 			}
+			// Re-verify against Redis before each leader-only action.
+			// A long GC pause or slow DB query between checks can let the
+			// lease expire and another instance take over; without these
+			// re-checks the stale instance would keep mutating shared state.
 			if !l.elector.StillHolds(ctx) {
 				continue
 			}
@@ -53,9 +56,21 @@ func (l *Loop) Run(ctx context.Context) {
 			} else if n > 0 {
 				lg.Info("reclaimed leases", zap.Int64("n", n))
 			}
+			if !l.elector.StillHolds(ctx) {
+				continue
+			}
 			l.finishIdleTasks(ctx)
+			if !l.elector.StillHolds(ctx) {
+				continue
+			}
+			if l.repos == nil || l.repos.Nodes == nil {
+				continue
+			}
 			if err := l.repos.Nodes.MarkStale(ctx, l.stale); err != nil {
 				lg.Debug("mark stale nodes", zap.Error(err))
+			}
+			if !l.elector.StillHolds(ctx) {
+				continue
 			}
 			l.pushMetrics(ctx)
 		}
@@ -63,11 +78,22 @@ func (l *Loop) Run(ctx context.Context) {
 }
 
 func (l *Loop) finishIdleTasks(ctx context.Context) {
+	if !l.elector.StillHolds(ctx) {
+		return
+	}
+	if l.repos == nil || l.repos.Tasks == nil {
+		return
+	}
 	tasks, err := l.repos.Tasks.ListByStatus(ctx, model.TaskRunning)
 	if err != nil {
 		return
 	}
 	for _, t := range tasks {
+		// Re-check leadership between iterations so a lease loss mid-loop
+		// halts further task completions immediately.
+		if !l.elector.StillHolds(ctx) {
+			return
+		}
 		pending, err := l.queue.TaskPending(ctx, t.ID)
 		if err != nil {
 			continue
