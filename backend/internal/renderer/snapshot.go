@@ -44,8 +44,8 @@ func NewStore(ttl time.Duration) *Store {
 
 func (s *Store) Put(rec *Record) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.gcLocked()
-	s.mu.Unlock()
 	s.data[rec.ID] = rec
 }
 
@@ -60,6 +60,20 @@ func (s *Store) Get(id string) (*Record, bool) {
 		return nil, false
 	}
 	return rec, true
+}
+
+// Snapshot returns a point-in-time copy of the IDs currently in the store.
+// It is safe to call concurrently with Put/Get. Callers that need a stable
+// list (e.g. admin/debug endpoints) should use this instead of ranging over
+// the underlying map, which is not safe to do without the lock.
+func (s *Store) Snapshot() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.data))
+	for id := range s.data {
+		out = append(out, id)
+	}
+	return out
 }
 
 func (s *Store) gcLocked() {
