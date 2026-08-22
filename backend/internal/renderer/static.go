@@ -34,7 +34,11 @@ func CaptureFromHTML(pageURL string, body []byte) (*Capture, error) {
 	if err != nil {
 		return nil, err
 	}
-	pngBytes = append(body[:0], pngBytes...)
+	// pngBytes is already a self-owned slice freshly allocated by
+	// bytes.Buffer.Bytes(). Do NOT rewrite it onto body's backing array
+	// (e.g. append(body[:0], pngBytes...)): body is the caller's buffer
+	// that may be reset and returned to a pool after CaptureFromHTML
+	// returns, which would corrupt the PNG data we hand back.
 	nodes := VisibleNodes(tree)
 	return &Capture{
 		URL:    pageURL,
