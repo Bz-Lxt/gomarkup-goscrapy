@@ -99,7 +99,9 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, respectRobots bool) (
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		if c.pool != nil && px != "" {
+		// Don't blame the proxy when the context was cancelled — the
+		// failure is intentional, not a proxy health issue.
+		if c.pool != nil && px != "" && ctx.Err() == nil {
 			c.pool.Report(px, false, err.Error())
 		}
 		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
@@ -107,6 +109,11 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, respectRobots bool) (
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
+		// If the context was cancelled mid-read, surface the context
+		// error so callers can detect it via errors.Is.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("read body: %w", ctxErr)
+		}
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 	if c.pool != nil && px != "" {
@@ -142,7 +149,11 @@ func (c *Client) httpClient(pageURL, proxyURL string) (*http.Client, error) {
 		if len(via) >= 8 {
 			return fmt.Errorf("too many redirects")
 		}
-		*req = *req.WithContext(context.WithoutCancel(req.Context()))
+		// Keep the original cancellable context on every redirect hop so
+		// that cancelling the task context aborts in-flight redirects
+		// instead of waiting for the HTTP timeout. req already carries
+		// the caller's context; only restore headers the transport
+		// would otherwise reset.
 		req.Header.Set("User-Agent", c.ua)
 		return nil
 	}}, nil
