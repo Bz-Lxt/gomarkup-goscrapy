@@ -62,12 +62,20 @@ func (c *RobotsCache) Allowed(ctx context.Context, rawURL string) (bool, time.Du
 	resp, err := c.client.Do(req)
 	rule := &robotsRule{fetched: time.Now(), ok: true, allow: []string{"/"}}
 	if err == nil && resp != nil {
+		// Close the body for every response (2xx, 4xx, 5xx) so the
+		// underlying TCP connection is released back to the transport's
+		// idle pool. Without this, 404/5xx robots.txt responses leak
+		// connections until MaxIdleConns is exhausted.
+		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			defer resp.Body.Close()
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			rule = parseRobots(string(body))
 			rule.fetched = time.Now()
 			rule.ok = true
+		} else {
+			// Drain the remaining body to EOF so the connection can be
+			// reused; an unread/closed body prevents keep-alive reuse.
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 		}
 	}
 	c.mu.Lock()
