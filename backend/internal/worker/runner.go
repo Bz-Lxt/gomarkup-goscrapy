@@ -61,6 +61,16 @@ func (r *Runner) SetPaused(taskID int64, paused bool) {
 	r.mu.Unlock()
 }
 
+// ApplyRateLimit forwards a control-plane QPS directive to the adaptive
+// limiter.  Safe to call from the gRPC receive goroutine while worker
+// goroutines are calling Observe/QPS concurrently — Adaptive.ApplyCommand
+// holds its own lock so the final state always matches the last command.
+func (r *Runner) ApplyRateLimit(domain string, qps float64) {
+	if r.adapt != nil {
+		r.adapt.ApplyCommand(domain, qps)
+	}
+}
+
 func (r *Runner) Shutdown() {
 	r.mu.Lock()
 	r.shutdown = true

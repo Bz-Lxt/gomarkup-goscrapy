@@ -136,6 +136,7 @@ func (c *Client) apply(cmd *MasterCommand) {
 		c.runner.Shutdown()
 	}
 	if rl := cmd.GetRateLimit(); rl != nil {
+		c.runner.ApplyRateLimit(rl.GetDomain(), rl.GetQps())
 		logger.Named("grpc-client").Info("rate limit command",
 			zap.String("domain", rl.GetDomain()), zap.Float64("qps", rl.GetQps()))
 	}

@@ -111,6 +111,21 @@ func (l *Limiter) CurrentQPS(domain string) float64 {
 	return b.rate
 }
 
+// AllQPS returns a snapshot of the current QPS for every known domain.
+// The map is a fresh copy so callers may iterate it without holding any
+// internal lock.
+func (l *Limiter) AllQPS() map[string]float64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make(map[string]float64, len(l.buckets))
+	for d, b := range l.buckets {
+		b.mu.Lock()
+		out[d] = b.rate
+		b.mu.Unlock()
+	}
+	return out
+}
+
 func (l *Limiter) bucket(domain string, qps float64) *tokenBucket {
 	l.mu.Lock()
 	defer l.mu.Unlock()
