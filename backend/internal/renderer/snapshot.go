@@ -85,17 +85,25 @@ func (s *Service) Capture(ctx context.Context, pageURL string) (*Record, error) 
 	if pageURL == "" {
 		return nil, fmt.Errorf("url required")
 	}
+	// If the caller has already gone away (client disconnect / upstream cancel),
+	// bail out before issuing any network requests.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var cap *Capture
 	var err error
 	if s.ws != "" {
 		cap, err = CaptureCDP(ctx, s.ws, pageURL)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			logger.Named("renderer").Warn("cdp snapshot failed, falling back to static html",
 				zap.Error(err), zap.String("url", pageURL))
 		}
 	}
 	if cap == nil {
-		cap, err = CaptureStatic(context.Background(), s.fetch, pageURL)
+		cap, err = CaptureStatic(ctx, s.fetch, pageURL)
 		if err != nil {
 			return nil, err
 		}

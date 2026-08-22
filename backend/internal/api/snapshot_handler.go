@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +19,12 @@ func (d *Deps) CreateSnapshot(c *gin.Context) {
 	}
 	rec, err := d.Snap.Capture(c.Request.Context(), req.URL)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// Client disconnected or upstream cancelled: abort instead of writing
+			// a 503 envelope, and do not perform further work.
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
 		Unavailable(c, "渲染器不可用")
 		return
 	}
