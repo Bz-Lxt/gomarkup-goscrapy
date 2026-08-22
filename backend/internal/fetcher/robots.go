@@ -54,21 +54,36 @@ func (c *RobotsCache) Allowed(ctx context.Context, rawURL string) (bool, time.Du
 	c.mu.Unlock()
 
 	robotsURL := u.Scheme + "://" + u.Host + "/robots.txt"
-	req, err := http.NewRequestWithContext(context.WithoutCancel(ctx), http.MethodGet, robotsURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, robotsURL, nil)
 	if err != nil {
 		return true, 0, nil
 	}
 	req.Header.Set("User-Agent", c.ua)
 	resp, err := c.client.Do(req)
-	rule := &robotsRule{fetched: time.Now(), ok: true, allow: []string{"/"}}
-	if err == nil && resp != nil {
-		defer resp.Body.Close()
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-			rule = parseRobots(string(body))
-			rule.fetched = time.Now()
-			rule.ok = true
+	if err != nil {
+		// Task cancellation must abort the first robots check immediately
+		// so the worker is not stuck until the HTTP timeout. Do not cache
+		// a stale rule — the next call will retry the fetch.
+		if ctx.Err() != nil {
+			return false, 0, ctx.Err()
 		}
+		// Other network errors: fail open by caching a permissive rule.
+		rule := &robotsRule{fetched: time.Now(), ok: true, allow: []string{"/"}}
+		c.mu.Lock()
+		c.entries[host] = rule
+		c.mu.Unlock()
+		return rule.allows(u.Path), rule.delay, nil
+	}
+	defer resp.Body.Close()
+	rule := &robotsRule{fetched: time.Now(), ok: true, allow: []string{"/"}}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if ctx.Err() != nil {
+			return false, 0, ctx.Err()
+		}
+		rule = parseRobots(string(body))
+		rule.fetched = time.Now()
+		rule.ok = true
 	}
 	c.mu.Lock()
 	c.entries[host] = rule

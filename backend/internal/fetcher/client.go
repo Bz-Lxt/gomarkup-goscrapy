@@ -66,7 +66,13 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, respectRobots bool) (
 	}
 	if respectRobots {
 		ok, delay, err := c.robots.Allowed(ctx, rawURL)
-		if err == nil && !ok {
+		if err != nil {
+			// Surface context cancellation (and other robots errors) instead of
+			// silently proceeding to fetch the page. This lets a stopped task
+			// abort the first robots check immediately rather than blocking.
+			return nil, fmt.Errorf("robots check %s: %w", rawURL, err)
+		}
+		if !ok {
 			return &Result{URL: rawURL, RobotsSkip: true, Status: 0}, nil
 		}
 		if delay > 0 {
