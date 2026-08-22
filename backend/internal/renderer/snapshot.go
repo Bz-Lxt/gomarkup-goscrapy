@@ -78,7 +78,11 @@ type Service struct {
 }
 
 func NewService(rendererWS string, fetch *fetcher.Client) *Service {
-	return &Service{ws: rendererWS, fetch: fetch, store: NewStore(30 * time.Minute)}
+	var sf staticFetcher
+	if fetch != nil {
+		sf = fetch
+	}
+	return &Service{ws: rendererWS, fetch: sf, store: NewStore(30 * time.Minute)}
 }
 
 func (s *Service) Capture(ctx context.Context, pageURL string) (*Record, error) {
@@ -95,6 +99,9 @@ func (s *Service) Capture(ctx context.Context, pageURL string) (*Record, error) 
 		}
 	}
 	if cap == nil {
+		if s.fetch == nil {
+			return nil, fmt.Errorf("renderer unavailable: remote renderer not configured and static fetcher disabled")
+		}
 		cap, err = CaptureStatic(ctx, s.fetch, pageURL)
 		if err != nil {
 			return nil, err
