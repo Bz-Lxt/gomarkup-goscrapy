@@ -54,13 +54,11 @@ func (b *tokenBucket) wait(ctx context.Context) error {
 		if d < 5*time.Millisecond {
 			d = 5 * time.Millisecond
 		}
+		b.mu.Unlock()
 		timer := time.NewTimer(d)
-		defer func() {
-			timer.Stop()
-			b.mu.Unlock()
-		}()
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
 		case <-timer.C:
 		}
