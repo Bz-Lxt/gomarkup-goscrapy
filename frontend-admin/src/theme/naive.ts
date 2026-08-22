@@ -1,0 +1,73 @@
+import type { GlobalThemeOverrides } from 'naive-ui'
+
+export const themeOverrides: GlobalThemeOverrides = {
+  common: {
+    primaryColor: '#3EE0C5',
+    primaryColorHover: '#62EBD2',
+    primaryColorPressed: '#27C4AB',
+    primaryColorSuppl: '#3EE0C5',
+    infoColor: '#3EE0C5',
+    successColor: '#3EE0C5',
+    warningColor: '#F5B942',
+    errorColor: '#FF6B7A',
+    bodyColor: '#071018',
+    cardColor: '#0C1A24',
+    modalColor: '#0C1A24',
+    popoverColor: '#122632',
+    tableColor: '#0C1A24',
+    tableColorStriped: '#0A1620',
+    tableHeaderColor: '#122632',
+    inputColor: '#122632',
+    borderColor: '#1E3A47',
+    dividerColor: '#1E3A47',
+    hoverColor: 'rgba(62, 224, 197, 0.08)',
+    textColorBase: '#E7F4F2',
+    textColor1: '#E7F4F2',
+    textColor2: '#E7F4F2',
+    textColor3: '#7FA3AE',
+    placeholderColor: '#7FA3AE',
+    fontFamily: "'IBM Plex Sans', sans-serif",
+    fontFamilyMono: "'IBM Plex Mono', monospace",
+    borderRadius: '8px',
+  },
+  Button: {
+    textColorPrimary: '#071018',
+    textColorHoverPrimary: '#071018',
+    textColorPressedPrimary: '#071018',
+    textColorFocusPrimary: '#071018',
+    colorPrimary: '#3EE0C5',
+    colorHoverPrimary: '#62EBD2',
+    colorPressedPrimary: '#27C4AB',
+    borderPrimary: '#3EE0C5',
+    rippleColor: '#3EE0C5',
+  },
+  DataTable: {
+    thTextColor: '#7FA3AE',
+    tdTextColor: '#E7F4F2',
+    thFontWeight: '600',
+    borderColor: '#1E3A47',
+    tdColorHover: '#122632',
+  },
+  Input: {
+    color: '#122632',
+    colorFocus: '#122632',
+    border: '1px solid #1E3A47',
+    borderHover: '1px solid #3EE0C5',
+    borderFocus: '1px solid #3EE0C5',
+  },
+  Select: {
+    peers: {
+      InternalSelection: {
+        color: '#122632',
+        border: '1px solid #1E3A47',
+      },
+    },
+  },
+  Tag: {
+    colorBordered: '#122632',
+  },
+  Dialog: {
+    titleTextColor: '#E7F4F2',
+    textColor: '#E7F4F2',
+  },
+}
