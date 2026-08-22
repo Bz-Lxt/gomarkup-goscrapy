@@ -7,6 +7,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+
+	"goscrapy/internal/model"
 )
 
 func Open(ctx context.Context, dsn string) (*sqlx.DB, error) {
@@ -32,8 +34,16 @@ type Repos struct {
 	Rules   *RuleRepo
 	Tasks   *TaskRepo
 	Results *ResultRepo
-	Nodes   *NodeRepo
+	Nodes   NodeStore
 	Audit   *AuditRepo
+}
+
+type NodeStore interface {
+	Upsert(ctx context.Context, n *model.WorkerNode) error
+	Touch(ctx context.Context, n *model.WorkerNode) error
+	List(ctx context.Context) ([]model.WorkerNode, error)
+	MarkStale(ctx context.Context, olderThan time.Duration) error
+	Get(ctx context.Context, id string) (*model.WorkerNode, error)
 }
 
 func NewRepos(db *sqlx.DB) *Repos {

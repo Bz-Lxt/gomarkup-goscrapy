@@ -90,7 +90,7 @@ func (s *Server) handle(ctx context.Context, msg *WorkerMessage) {
 	if msg.GetWorkerId() == "" {
 		return
 	}
-	writeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	n := &model.WorkerNode{
 		ID:     msg.GetWorkerId(),
