@@ -49,7 +49,9 @@ func (r *Ring) Latest() (Point, bool) {
 func (r *Ring) Window() []Point {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.items
+	out := make([]Point, len(r.items))
+	copy(out, r.items)
+	return out
 }
 
 func (c *Collector) Record(ring *Ring) Snapshot {
