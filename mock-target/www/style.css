@@ -1,0 +1,16 @@
+:root { --bg:#071018; --card:#122632; --cyan:#3EE0C5; --text:#E7F4F2; --muted:#7FA3AE; --amber:#F5B942; }
+* { box-sizing:border-box; }
+body { margin:0; font-family: Georgia, "Noto Serif SC", serif; background:var(--bg); color:var(--text); }
+.nav { display:flex; gap:24px; align-items:center; padding:16px 32px; border-bottom:1px solid #1E3A47; }
+.logo { color:var(--cyan); text-decoration:none; letter-spacing:.2em; font-weight:700; }
+.nav a { color:var(--muted); text-decoration:none; }
+main { padding:32px; }
+h1 { font-weight:500; }
+.btn { display:inline-block; padding:10px 18px; background:var(--cyan); color:#071018; text-decoration:none; border-radius:4px; }
+.grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:20px; }
+.product-card { background:var(--card); padding:16px; border:1px solid #1E3A47; }
+.product-card .title { margin:0 0 8px; font-size:20px; color:var(--text); }
+.product-card .price { color:var(--amber); font-size:18px; }
+.product-card .sku { color:var(--muted); font-size:13px; }
+.product-link { color:var(--cyan); }
+.detail .price { font-size:28px; color:var(--amber); }
