@@ -1,0 +1,193 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_USER: goscrapy
+      POSTGRES_PASSWORD: goscrapy
+      POSTGRES_DB: goscrapy
+    ports:
+      - "27334:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goscrapy -d goscrapy"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "27335:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  renderer:
+    image: chromedp/headless-shell:latest
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "27337:9222"
+    command:
+      - --remote-debugging-address=0.0.0.0
+      - --remote-debugging-port=9222
+      - --disable-gpu
+      - --no-sandbox
+      - --hide-scrollbars
+      - --window-size=1440,900
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9222'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mock-target:
+    build:
+      context: ./mock-target
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "27336:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 8
+    restart: unless-stopped
+
+  master:
+    build:
+      context: ./backend
+      args:
+        BIN: master
+    environment:
+      TZ: Asia/Shanghai
+      APP_ROLE: master
+      HTTP_ADDR: ":8080"
+      GRPC_ADDR: ":9090"
+      DATABASE_URL: postgres://goscrapy:goscrapy@postgres:5432/goscrapy?sslmode=disable
+      REDIS_ADDR: redis:6379
+      RENDERER_WS: ws://renderer:9222
+      MOCK_TARGET_URL: http://mock-target
+      JWT_SECRET: goscrapy-dev-secret
+      MIGRATIONS_DIR: /app/migrations
+      LOG_LEVEL: info
+      PROXY_POOL_MODE: mock
+      LLM_ENABLED: "false"
+      ELECTION_LOCK_TTL: "8s"
+    ports:
+      - "27332:8080"
+      - "27333:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      renderer:
+        condition: service_started
+      mock-target:
+        condition: service_healthy
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    healthcheck:
+      test: ["CMD", "/app/healthcheck", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 8s
+      timeout: 4s
+      retries: 10
+    restart: unless-stopped
+
+  worker-1:
+    build:
+      context: ./backend
+      args:
+        BIN: worker
+    environment:
+      TZ: Asia/Shanghai
+      APP_ROLE: worker
+      WORKER_ID: worker-1
+      MASTER_GRPC: master:9090
+      DATABASE_URL: postgres://goscrapy:goscrapy@postgres:5432/goscrapy?sslmode=disable
+      REDIS_ADDR: redis:6379
+      MOCK_TARGET_URL: http://mock-target
+      LOG_LEVEL: info
+      PROXY_POOL_MODE: mock
+      WORKER_CONCURRENCY: "4"
+      LEASE_TTL: "30s"
+    depends_on:
+      master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mock-target:
+        condition: service_healthy
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    restart: unless-stopped
+
+  worker-2:
+    build:
+      context: ./backend
+      args:
+        BIN: worker
+    environment:
+      TZ: Asia/Shanghai
+      APP_ROLE: worker
+      WORKER_ID: worker-2
+      MASTER_GRPC: master:9090
+      DATABASE_URL: postgres://goscrapy:goscrapy@postgres:5432/goscrapy?sslmode=disable
+      REDIS_ADDR: redis:6379
+      MOCK_TARGET_URL: http://mock-target
+      LOG_LEVEL: info
+      PROXY_POOL_MODE: mock
+      WORKER_CONCURRENCY: "4"
+      LEASE_TTL: "30s"
+    depends_on:
+      master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mock-target:
+        condition: service_healthy
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    restart: unless-stopped
+
+  frontend-admin:
+    build:
+      context: ./frontend-admin
+      args:
+        VITE_API_BASE: /api
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "27331:80"
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 8s
+      timeout: 4s
+      retries: 8
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
