@@ -1,0 +1,47 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+dist/
+
+# Go
+backend/vendor/
+backend/coverage.out
+backend/coverage.html
+
+# Node
+frontend-admin/node_modules/
+frontend-admin/dist/
+frontend-admin/.vite/
+tests/node_modules/
+npm-debug.log*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# Test artifacts
+playwright-report/
+test-results/
+tests/.auth/
+
+# Runtime data
+data/
+tmp/
+*.log
+
+# Protocol generated (keep checked-in)
+# !backend/internal/grpcctl/pb/
