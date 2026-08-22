@@ -86,12 +86,13 @@ func (s *Service) Capture(ctx context.Context, pageURL string) (*Record, error) 
 		return nil, fmt.Errorf("url required")
 	}
 	var cap *Capture
-	var err error
 	if s.ws != "" {
-		cap, err = CaptureCDP(ctx, s.ws, pageURL)
+		c, err := CaptureCDP(ctx, s.ws, pageURL)
 		if err != nil {
 			logger.Named("renderer").Warn("cdp snapshot failed, falling back to static html",
 				zap.Error(err), zap.String("url", pageURL))
+		} else {
+			cap = c
 		}
 	}
 	if cap == nil {
@@ -100,9 +101,6 @@ func (s *Service) Capture(ctx context.Context, pageURL string) (*Record, error) 
 			return nil, fallbackErr
 		}
 		cap = fallback
-	}
-	if err != nil {
-		return nil, err
 	}
 	rec := &Record{
 		ID:        "snap_" + uuid.NewString(),
