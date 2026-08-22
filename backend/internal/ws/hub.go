@@ -21,8 +21,36 @@ var upgrader = websocket.Upgrader{
 }
 
 type client struct {
-	conn *websocket.Conn
-	send chan []byte
+	conn   *websocket.Conn
+	send   chan []byte
+	mu     sync.Mutex
+	closed bool
+}
+
+// trySend performs a non-blocking send that is safe to call concurrently with
+// shutdown: the send and the close are serialized by c.mu, so a broadcast
+// racing with a disconnect can never hit a "send on closed channel" panic.
+func (c *client) trySend(b []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	select {
+	case c.send <- b:
+	default:
+	}
+}
+
+// shutdown closes the send channel exactly once and is mutually exclusive with
+// trySend, guaranteeing no in-flight broadcast send can observe a closed chan.
+func (c *client) shutdown() {
+	c.mu.Lock()
+	if !c.closed {
+		c.closed = true
+		close(c.send)
+	}
+	c.mu.Unlock()
 }
 
 type Hub struct {
@@ -45,10 +73,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.clients[c] = struct{}{}
 	if h.last != nil {
-		select {
-		case c.send <- h.last:
-		default:
-		}
+		c.trySend(h.last) // safe even if a concurrent disconnect is racing
 	}
 	h.mu.Unlock()
 	go c.write()
@@ -60,7 +85,7 @@ func (h *Hub) remove(c *client) {
 	h.mu.Lock()
 	delete(h.clients, c)
 	h.mu.Unlock()
-	close(c.send)
+	c.shutdown() // closes c.send exactly once, mutually exclusive with trySend
 	_ = c.conn.Close()
 }
 
@@ -118,16 +143,13 @@ func (h *Hub) BroadcastMetrics(nodes []model.WorkerNode) {
 	}
 	h.mu.Lock()
 	h.last = b
-	targets := make([]chan []byte, 0, len(h.clients))
+	targets := make([]*client, 0, len(h.clients))
 	for c := range h.clients {
-		targets = append(targets, c.send)
+		targets = append(targets, c)
 	}
 	h.mu.Unlock()
-	for _, send := range targets {
-		select {
-		case send <- b:
-		default:
-		}
+	for _, c := range targets {
+		c.trySend(b) // safe vs. concurrent shutdown: no send-on-closed
 	}
 }
 
