@@ -34,9 +34,6 @@ func CaptureFromHTML(pageURL string, body []byte) (*Capture, error) {
 		return nil, err
 	}
 	nodes := VisibleNodes(tree)
-	if len(nodes) > 0 {
-		tree.ByID = nil
-	}
 	return &Capture{
 		URL:    pageURL,
 		Width:  ViewportW,
