@@ -15,63 +15,42 @@ import (
 type Queue struct {
 	rdb      *redis.Client
 	leaseTTL time.Duration
-	popSHA   string
-	ackSHA   string
-	recSHA   string
-	dropSHA  string
+	pop      *redis.Script
+	ack      *redis.Script
+	reclaim  *redis.Script
+	drop     *redis.Script
 }
 
 func New(rdb *redis.Client, leaseTTL time.Duration) *Queue {
 	if leaseTTL <= 0 || leaseTTL > 30*time.Second {
 		leaseTTL = 30 * time.Second
 	}
-	return &Queue{rdb: rdb, leaseTTL: leaseTTL}
+	return &Queue{
+		rdb:      rdb,
+		leaseTTL: leaseTTL,
+		pop:      redis.NewScript(popLua),
+		ack:      redis.NewScript(ackLua),
+		reclaim:  redis.NewScript(reclaimLua),
+		drop:     redis.NewScript(dropTaskLua),
+	}
 }
 
 func (q *Queue) LoadScripts(ctx context.Context) error {
-	var err error
-	if q.popSHA, err = q.rdb.ScriptLoad(ctx, popLua).Result(); err != nil {
-		return fmt.Errorf("load pop lua: %w", err)
-	}
-	if q.ackSHA, err = q.rdb.ScriptLoad(ctx, ackLua).Result(); err != nil {
-		return fmt.Errorf("load ack lua: %w", err)
-	}
-	if q.recSHA, err = q.rdb.ScriptLoad(ctx, reclaimLua).Result(); err != nil {
-		return fmt.Errorf("load reclaim lua: %w", err)
-	}
-	if q.dropSHA, err = q.rdb.ScriptLoad(ctx, dropTaskLua).Result(); err != nil {
-		return fmt.Errorf("load drop lua: %w", err)
+	scripts := []*redis.Script{q.pop, q.ack, q.reclaim, q.drop}
+	for _, s := range scripts {
+		if err := s.Load(ctx, q.rdb).Err(); err != nil {
+			return fmt.Errorf("load lua script: %w", err)
+		}
 	}
 	return nil
 }
 
-func (q *Queue) eval(ctx context.Context, sha, src string, keys []string, args ...any) *redis.Cmd {
-	cmd := q.rdb.EvalSha(ctx, sha, keys, args...)
-	if cmd.Err() != nil && isNOSCRIPT(cmd.Err()) {
-		fallback := q.rdb.Eval(ctx, src, keys, args...)
-		if fallback.Err() != nil {
-			return fallback
-		}
-	}
-	return cmd
-}
-
-func isNOSCRIPT(err error) bool {
-	return err != nil && (err.Error() == "NOSCRIPT No matching script. Please use EVAL." ||
-		contains(err.Error(), "NOSCRIPT"))
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || (len(s) > 0 && indexOf(s, sub) >= 0))
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
+// runScript executes a Lua script using the optimistic EVALSHA + EVAL-fallback
+// pattern from go-redis. Script.Run first tries EVALSHA; on NOSCRIPT it
+// transparently retries with EVAL, returning the Cmd whose result (value or
+// error) reflects the actual outcome — never the stale NOSCRIPT error.
+func (q *Queue) runScript(ctx context.Context, s *redis.Script, keys []string, args ...any) *redis.Cmd {
+	return s.Run(ctx, q.rdb, keys, args...)
 }
 
 func (q *Queue) Enqueue(ctx context.Context, job *model.CrawlJob) error {
@@ -103,7 +82,7 @@ func (q *Queue) Pop(ctx context.Context, workerID string) (*model.CrawlJob, erro
 	if ttl < 1 {
 		ttl = 30
 	}
-	res, err := q.eval(ctx, q.popSHA, popLua, []string{ReadyKey, PayloadKey, LeaseKey}, now, ttl, workerID).Result()
+	res, err := q.runScript(ctx, q.pop, []string{ReadyKey, PayloadKey, LeaseKey}, now, ttl, workerID).Result()
 	if err == redis.Nil || res == nil {
 		return nil, nil
 	}
@@ -131,7 +110,7 @@ func (q *Queue) Ack(ctx context.Context, job *model.CrawlJob) error {
 	if job == nil {
 		return nil
 	}
-	_, err := q.eval(ctx, q.ackSHA, ackLua, []string{LeaseKey, PayloadKey, taskSetKey(job.TaskID)}, job.ID).Result()
+	_, err := q.runScript(ctx, q.ack, []string{LeaseKey, PayloadKey, taskSetKey(job.TaskID)}, job.ID).Result()
 	if err != nil && err != redis.Nil {
 		return fmt.Errorf("ack: %w", err)
 	}
@@ -140,7 +119,7 @@ func (q *Queue) Ack(ctx context.Context, job *model.CrawlJob) error {
 
 func (q *Queue) ReclaimExpired(ctx context.Context) (int64, error) {
 	now := timeutil.Unix(timeutil.Now())
-	res, err := q.eval(ctx, q.recSHA, reclaimLua, []string{ReadyKey, LeaseKey, PayloadKey}, now).Result()
+	res, err := q.runScript(ctx, q.reclaim, []string{ReadyKey, LeaseKey, PayloadKey}, now).Result()
 	if err != nil && err != redis.Nil {
 		return 0, fmt.Errorf("reclaim: %w", err)
 	}
@@ -152,7 +131,7 @@ func (q *Queue) ReclaimExpired(ctx context.Context) (int64, error) {
 }
 
 func (q *Queue) DropTask(ctx context.Context, taskID int64) (int64, error) {
-	res, err := q.eval(ctx, q.dropSHA, dropTaskLua, []string{ReadyKey, LeaseKey, PayloadKey, taskSetKey(taskID)}).Result()
+	res, err := q.runScript(ctx, q.drop, []string{ReadyKey, LeaseKey, PayloadKey, taskSetKey(taskID)}).Result()
 	if err != nil && err != redis.Nil {
 		return 0, fmt.Errorf("drop task: %w", err)
 	}
