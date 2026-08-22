@@ -1,0 +1,8 @@
+**/*_test.go
+**/.git
+**/.DS_Store
+**/coverage.out
+**/coverage.html
+bin/
+tmp/
+*.log
