@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package control;
+
+option go_package = "goscrapy/internal/grpcctl;grpcctl";
+
+// ControlPlane carries control-plane traffic only. Task bodies stay in Redis.
+service ControlPlane {
+  rpc Connect(stream WorkerMessage) returns (stream MasterCommand);
+}
+
+message WorkerMessage {
+  string worker_id = 1;
+  oneof payload {
+    Heartbeat heartbeat = 2;
+    MetricsReport metrics = 3;
+    CommandAck ack = 4;
+  }
+}
+
+message Heartbeat {
+  string status = 1;
+  int64 ts_unix = 2;
+  string role = 3;
+}
+
+message MetricsReport {
+  double cpu = 1;
+  double memory_mb = 2;
+  double pages_per_min = 3;
+  double fail_rate = 4;
+  string status = 5;
+}
+
+message CommandAck {
+  string command_id = 1;
+  bool ok = 2;
+  string error = 3;
+}
+
+message MasterCommand {
+  string command_id = 1;
+  oneof payload {
+    RateLimitCmd rate_limit = 2;
+    RuleHotReload rule_reload = 3;
+    ShutdownCmd shutdown = 4;
+  }
+}
+
+message RateLimitCmd {
+  string domain = 1;
+  double qps = 2;
+}
+
+message RuleHotReload {
+  int64 rule_id = 1;
+  int64 version = 2;
+}
+
+message ShutdownCmd {
+  string reason = 1;
+  int32 grace_seconds = 2;
+}
