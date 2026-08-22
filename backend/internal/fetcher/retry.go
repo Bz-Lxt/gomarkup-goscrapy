@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 )
@@ -25,6 +26,11 @@ func Backoff(attempt int, base time.Duration) time.Duration {
 
 func Retryable(status int, err error) bool {
 	if err != nil {
+		// Redirect loops or too-many-redirect failures will not resolve by
+		// retrying; surface them so upstream can alert/ignore accordingly.
+		if errors.Is(err, ErrTooManyRedirects) {
+			return false
+		}
 		return true
 	}
 	return status == 429 || status == 502 || status == 503 || status == 504

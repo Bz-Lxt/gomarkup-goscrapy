@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +18,12 @@ import (
 )
 
 const DefaultUA = "GoScrapy/1.0 (+https://goscrapy.local)"
+
+// ErrTooManyRedirects is returned when a request exceeds the configured
+// maximum number of redirects. It is a sentinel error so that callers can
+// distinguish it from transient network or response-read failures using
+// errors.Is.
+var ErrTooManyRedirects = errors.New("too many redirects")
 
 type Result struct {
 	URL        string
@@ -98,9 +105,19 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, respectRobots bool) (
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.6")
 	start := time.Now()
 	resp, err := client.Do(req)
-	if err != nil && resp == nil {
+	if err != nil {
+		// When CheckRedirect fails (e.g. too many redirects), http.Client
+		// returns a non-nil but already-closed response alongside the error.
+		// Close the body if present and surface the original error instead of
+		// attempting to read a closed body, which would mask the real cause.
+		if resp != nil {
+			resp.Body.Close()
+		}
 		if c.pool != nil && px != "" {
 			c.pool.Report(px, false, err.Error())
+		}
+		if errors.Is(err, ErrTooManyRedirects) {
+			return nil, fmt.Errorf("fetch %s: %w", rawURL, ErrTooManyRedirects)
 		}
 		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
@@ -140,7 +157,7 @@ func (c *Client) httpClient(pageURL, proxyURL string) (*http.Client, error) {
 	jar := c.jarFor(urlx.Host(pageURL))
 	return &http.Client{Timeout: c.timeout, Transport: tr, Jar: jar, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 8 {
-			return fmt.Errorf("too many redirects")
+			return ErrTooManyRedirects
 		}
 		req.Header.Set("User-Agent", c.ua)
 		return nil
